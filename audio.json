@@ -1,0 +1,12 @@
+{
+  "Bridge": "E:\\SteamLibrary\\steamapps\\common\\PBZ\\platform\\steam\\ue4ss\\Mods\\JamieWin\\runtime\\bridge.txt",
+  "Music": "resources/audio/mandarin_duck_play.mp3",
+  "ArmedMusic": "resources/audio/mr_top_player.m4a",
+  "Drink": "resources/audio/jamie_drink4_ja.wav",
+  "Win": "resources/audio/jamie_wins.wav",
+  "Runtime": ".local/runtime",
+  "MusicVolume": 0.45,
+  "DrinkVolume": 0.9,
+  "WinVolume": 1.0,
+  "DuckVolume": 0.2
+}

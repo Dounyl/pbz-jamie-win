@@ -1,0 +1,15 @@
+/.local/
+.cache/
+.archive/
+downloads/
+research/
+dist/
+runtime/
+__pycache__/
+*.pyc
+# Downloaded media sources and extraction records
+/output/**/sources.json
+audio/*.wav
+audio/*.mp3
+audio/*.ogg
+audio/*.flac
