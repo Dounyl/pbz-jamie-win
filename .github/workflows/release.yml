@@ -1,0 +1,163 @@
+name: Build release
+run-name: Build ${{ inputs.tag || github.event.release.tag_name }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build
+        required: true
+        default: v1.0.0
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build and upload Windows package
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      PYTHONUTF8: '1'
+    steps:
+      - name: Validate release tag
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') {
+            throw 'Use an existing release tag such as v1.0.0.'
+          }
+
+      - name: Check out release source
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          architecture: x64
+
+      - name: Install pinned build and test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --only-binary=:all: --target .local/cache/native-build ziglang==0.13.0
+          if ($LASTEXITCODE -ne 0) { throw 'Zig installation failed.' }
+          python -m pip install --disable-pip-version-check --only-binary=:all: --target .local/cache/audio-tools imageio-ffmpeg==0.7.0
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+          python -m pip install --disable-pip-version-check --only-binary=:all: --target .local/cache/testdeps lupa==2.8
+          if ($LASTEXITCODE -ne 0) { throw 'Lua test dependency installation failed.' }
+
+      - name: Build release package
+        run: |
+          $metadata = Get-Content probes/JamieWinNativeAudioTest/mod.json -Raw | ConvertFrom-Json
+          if ($env:RELEASE_TAG -cne ('v' + $metadata.version)) {
+            throw 'Release tag does not match mod.json.'
+          }
+          $package = & ./tools/package-native-audio-test.ps1
+          $package | ConvertTo-Json | Set-Content .local/release-result.json -Encoding utf8
+
+      - name: Run offline regression checks
+        run: |
+          foreach ($test in @(
+            'test_native_audio_probe.py',
+            'test_native_menu_detection.py',
+            'test_lua.py',
+            'test_native_mixer.py',
+            'test_native_menu_preview.py'
+          )) {
+            python (Join-Path tests $test)
+            if ($LASTEXITCODE -ne 0) { throw "Regression check failed: $test" }
+          }
+
+      - name: Verify package contents and checksum
+        run: |
+          @'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import zipfile
+
+          result = json.loads(Path('.local/release-result.json').read_text(encoding='utf-8-sig'))
+          archive = Path(result['Archive'])
+          stage = Path(result['Stage'])
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          assert digest == result['SHA256']
+          assert Path(str(archive) + '.sha256').read_text().strip() == digest + '  ' + archive.name
+          files = {p.relative_to(stage).as_posix(): p for p in stage.rglob('*') if p.is_file()}
+          base = 'platform/steam/ue4ss/Mods/JamieWinNativeAudioTest/'
+          with zipfile.ZipFile(archive) as package:
+              assert package.testzip() is None
+              assert len(package.namelist()) == len(files) == 18
+              assert set(package.namelist()) == set(files)
+              for name, path in files.items():
+                  assert package.read(name) == path.read_bytes(), name
+              metadata = json.loads(package.read(base + 'mod.json'))
+              assert os.environ['RELEASE_TAG'] == 'v' + metadata['version']
+              assert archive.name == metadata['name'] + '-' + metadata['version'] + '.zip'
+              version = metadata['version'] + '-' + metadata['channel']
+              assert 'Version = "' + version + '"' in package.read(base + 'Scripts/probe_settings.lua').decode()
+              assert version.encode() in package.read(base + 'Native/JamieWinAudio.dll')
+          print(f'Verified {archive.name}: {len(files)} files, SHA256 {digest}')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Release package verification failed.' }
+
+      - name: Upload assets and update release checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $package = Get-Content .local/release-result.json -Raw | ConvertFrom-Json
+          $archiveName = Split-Path $package.Archive -Leaf
+          $releaseJson = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Create the GitHub Release before running this workflow.' }
+          $release = $releaseJson | ConvertFrom-Json
+          if ($release.draft) { throw 'Publish the release before building its assets.' }
+
+          # Update only this package's checksum block; preserve the release notes.
+          $notes = [string]$release.body
+          $pattern = '(?s)(`' + [regex]::Escape($archiveName) + '` SHA256:\s*```text\s*)[0-9a-fA-F]{64}(\s*```)'
+          if ([regex]::IsMatch($notes, $pattern)) {
+            $notes = [regex]::Replace($notes, $pattern, {
+              param($match)
+              $match.Groups[1].Value + $package.SHA256 + $match.Groups[2].Value
+            })
+          } else {
+            $notes += (@('', '', ('`' + $archiveName + '` SHA256:'), '', '```text', $package.SHA256, '```') -join "`n")
+          }
+          $notes | Set-Content .local/release-notes.md -Encoding utf8
+
+          gh release upload $env:RELEASE_TAG $package.Archive ($package.Archive + '.sha256') --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --notes-file .local/release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release checksum update failed.' }
+
+          $publishedJson = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify the published assets.' }
+          $published = $publishedJson | ConvertFrom-Json
+          foreach ($path in @($package.Archive, ($package.Archive + '.sha256'))) {
+            $file = Get-Item -LiteralPath $path
+            $asset = @($published.assets | Where-Object name -CEQ $file.Name)
+            if ($asset.Count -ne 1 -or $asset[0].state -ne 'uploaded' -or $asset[0].size -ne $file.Length) {
+              throw "Published asset verification failed: $($file.Name)"
+            }
+            $digest = 'sha256:' + (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset[0].digest -and $asset[0].digest -cne $digest) {
+              throw "Published asset checksum mismatch: $($file.Name)"
+            }
+          }
+          @(
+            ('Published [' + $archiveName + '](' + $published.html_url + ').'),
+            '',
+            ('SHA256: `' + $package.SHA256 + '`')
+          ) | Add-Content $env:GITHUB_STEP_SUMMARY
