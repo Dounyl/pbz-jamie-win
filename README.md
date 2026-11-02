@@ -6,6 +6,10 @@
 
 《Mr.Top.Player》比 1.0.1 再提高 20%；四酒和「Jamie wins」音效直接叠加，背景音乐保持原有音量和播放进度。继续使用原始 M4A / MP3 小体积安装包。
 
+## 视频演示
+
+[【影之刃零】⚡超⚡级⚡飞⚡飞⚡剑⚡](https://www.bilibili.com/video/BV1hi4A68EJP)
+
 ## 安装
 
 **UEMM 下载地址：[官方发布页](https://github.com/KintaroModding/uemodmanager/releases)**
