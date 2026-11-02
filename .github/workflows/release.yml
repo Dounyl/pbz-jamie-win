@@ -126,8 +126,12 @@ jobs:
 
           # Update only this package's checksum block; preserve the release notes.
           $notes = [string]$release.body
-          $pattern = '(?s)(`' + [regex]::Escape($archiveName) + '` SHA256:\s*```text\s*)[0-9a-fA-F]{64}(\s*```)'
-          if ([regex]::IsMatch($notes, $pattern)) {
+          $pattern = '(?s)(`' + [regex]::Escape($archiveName) + '` SHA256[:：]\s*```text\s*)[0-9a-fA-F]{64}(\s*```)'
+          $checksumBlocks = [regex]::Matches($notes, $pattern)
+          if ($checksumBlocks.Count -gt 0) {
+            for ($index = $checksumBlocks.Count - 1; $index -gt 0; $index--) {
+              $notes = $notes.Remove($checksumBlocks[$index].Index, $checksumBlocks[$index].Length)
+            }
             $notes = [regex]::Replace($notes, $pattern, {
               param($match)
               $match.Groups[1].Value + $package.SHA256 + $match.Groups[2].Value
@@ -145,6 +149,10 @@ jobs:
           $publishedJson = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG"
           if ($LASTEXITCODE -ne 0) { throw 'Could not verify the published assets.' }
           $published = $publishedJson | ConvertFrom-Json
+          $publishedChecksums = [regex]::Matches([string]$published.body, $pattern)
+          if ($publishedChecksums.Count -ne 1 -or -not $publishedChecksums[0].Value.Contains($package.SHA256)) {
+            throw 'Published release notes do not contain exactly one current package checksum.'
+          }
           foreach ($path in @($package.Archive, ($package.Archive + '.sha256'))) {
             $file = Get-Item -LiteralPath $path
             $asset = @($published.assets | Where-Object name -CEQ $file.Name)
