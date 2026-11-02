@@ -14,9 +14,9 @@ int main(int argc, char **argv) {
     FILE *output = fopen(argv[2], "wb");
     if (!output) return 4;
     JWMixer mixer = {0};
-    mixer.assets[0] = (JWAsset){source, frames};
+    mixer.assets[1] = (JWAsset){source, frames};
     mixer.music_volume = .45f;
-    jw_music(&mixer, 1);
+    jw_music(&mixer, 2);
     int16_t block[960 * 2];
     for (size_t frame = 0; frame < frames; frame += 960) {
         jw_menu(&mixer, frame >= 6u * 48000u && frame < 16u * 48000u);

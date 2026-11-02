@@ -5,6 +5,7 @@ Never starts/controls PBZ. The DSP test separately checks nonzero PCM amplitudes
 from pathlib import Path
 import os
 import shutil
+import subprocess
 import sys
 import time
 import unittest
@@ -13,6 +14,7 @@ import wave
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / 'probes/JamieWinNativeAudioTest/Scripts'
+FFMPEG = ROOT / '.local/cache/audio-tools/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe'
 sys.path.insert(0, str(ROOT / '.local/cache/testdeps'))
 from lupa.lua54 import LuaRuntime
 
@@ -36,6 +38,12 @@ class DeviceRig:
                            music=.45, drink_gain=.9, win_gain=1, drink=0, win=0)
 
     def silence(self, name):
+        if not name.startswith('jamie_'):
+            extension, codec, rate = ('m4a', 'aac', 48000) if name == 'mr_top_player' else ('mp3', 'libmp3lame', 44100)
+            subprocess.run([str(FFMPEG), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+                            '-f', 'lavfi', '-i', f'anullsrc=r={rate}:cl=stereo', '-t', '0.25',
+                            '-c:a', codec, '-b:a', '128k', str(self.folder / 'Audio' / (name + '.' + extension))], check=True)
+            return
         with wave.open(str(self.folder / 'Audio' / (name + '.wav')), 'wb') as f:
             f.setparams((2, 2, 48000, 0, 'NONE', 'not compressed'))
             frames = 48000 if name.startswith('jamie_') else 12000
@@ -99,10 +107,10 @@ class NativeDeviceTests(unittest.TestCase):
             self.assertEqual(r.wait(lambda s: True)['samples'], '0', 'Preparation must not queue audio before mute grant')
             r.apply(allow=1)
             s = r.wait(lambda s: s['phase'] == 'playing' and int(s['samples']) > 48000)
-            self.assertAlmostEqual(float(s['music_gain']), .45, places=5)
+            self.assertAlmostEqual(float(s['music_gain']), .648, places=5)
             previous = int(s['music_frames'])
             r.apply(music=.1, drink_gain=.2, win_gain=.3)
-            s = r.wait(lambda s: abs(float(s['music_gain'])-.1) < .0001)
+            s = r.wait(lambda s: abs(float(s['music_gain'])-.144) < .0001)
             self.assertGreater(int(s['music_frames']), previous, 'Changing sliders must not restart music')
             before_menu = int(s['music_frames'])
             r.apply(menu=1, drink=1, win=1)
@@ -116,7 +124,9 @@ class NativeDeviceTests(unittest.TestCase):
             r.apply(menu=0)
             s = r.wait(lambda s: s['drink_playing'] == '1' and s['win_playing'] == '1')
             self.assertAlmostEqual(float(s['drink_gain']), .2, places=5)
-            r.wait(lambda s: s['drink_playing'] == '0' and s['win_playing'] == '0' and float(s['music_gain']) > .099)
+            self.assertAlmostEqual(float(s['music_gain']), .144, places=5, msg='Cues must not duck background music')
+            self.assertGreater(int(s['music_frames']), int(later['music_frames']))
+            r.wait(lambda s: s['drink_playing'] == '0' and s['win_playing'] == '0' and abs(float(s['music_gain'])-.144) < .0001)
             # Reversing the transition and moving a slider never resets the device or music cursor.
             before_toggle = int(r.wait(lambda s: True)['music_frames'])
             for menu in (1, 0, 1, 0, 1, 0):
@@ -129,7 +139,9 @@ class NativeDeviceTests(unittest.TestCase):
             before = int(r.wait(lambda s: True)['samples'])
             r.wait(lambda s: float(s['music_gain']) == 0 and int(s['samples']) > before + 10000)
             r.apply(track=2, music=.45, drink=2)
-            r.wait(lambda s: s['track'] == 'drunk' and s['drink_playing'] == '1')
+            # Wait past the normal song-switch fade-in before checking the cue's effect on gain.
+            s = r.wait(lambda s: s['track'] == 'drunk' and s['drink_playing'] == '1' and int(s['music_frames']) >= 4800)
+            self.assertAlmostEqual(float(s['music_gain']), .45, places=5, msg='Drunk music must also stay at full gain during a cue')
             r.wait(lambda s: s['drink_playing'] == '0')
             log = (r.folder / 'runtime/native-output.log').read_text()
             self.assertEqual(log.count('CUE drink id=1'), 1)
@@ -189,6 +201,22 @@ class NativeDeviceTests(unittest.TestCase):
             r.silence('jamie_wins')
             r.apply(music=.3)
             r.wait(lambda s: s['phase'] == 'failed')
+            r.apply(epoch=2, allow=1)
+            r.wait(lambda s: s['phase'] == 'playing' and int(s['samples']) > 1000)
+        finally:
+            r.close()
+
+    def test_bad_m4a_fails_before_music_permission_and_can_recover(self):
+        r = DeviceRig('bad-compressed-device-check')
+        r.api['Init']()
+        try:
+            (r.folder / 'Audio/mr_top_player.m4a').write_bytes(b'not an M4A file')
+            r.apply()
+            failed = r.wait(lambda s: s['phase'] == 'failed')
+            self.assertEqual(failed['operation'], 'decode_audio')
+            self.assertEqual(failed['music_stopped'], '1')
+            self.assertEqual(failed['ready'], '0')
+            r.silence('mr_top_player')
             r.apply(epoch=2, allow=1)
             r.wait(lambda s: s['phase'] == 'playing' and int(s['samples']) > 1000)
         finally:

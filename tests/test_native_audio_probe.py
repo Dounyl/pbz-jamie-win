@@ -265,47 +265,168 @@ class ExecutionTests(unittest.TestCase):
             function obj(address)return {valid=true,GetAddress=function()return address end}end
             function valid(o)return o and o.valid==true end
             pawn=obj('player');enemy=obj('enemy');enemy.AttributeSetBase={valid=true,Health={CurrentValue=10}}
-            ability=obj('ability');ability.name='GA_SimpleExecution_ChiZheCanJian_C';ability.ExecutionTarget=enemy
+            ability=obj('ability');ability.name='GA_Hun_BEx_ChiZheCanJian_M_01_C'
+            ability['Execution Info']={Executor=pawn,Target=enemy,IsTarget=false}
+            timeline=obj('execution timeline');ability.ExecutionTimeline=timeline;playing=true
+            ability.IsPlayingTimeline=function(_,value)return playing and value==timeline end
             ability.GetAvatarActorFromActorInfo=function()return pawn end
             state={active=true,paused=false,player='player'}
-            observer={core=modules.core.new(),sample=function()return state end,className=function(_,o)return o.name end}
+            observer={core=modules.core.new(),sample=function()
+                assert(inGameThread~=false,'game objects must not be read on the delay thread')
+                return state
+            end,className=function(_,o)return o.name end}
             changed=0;logs={};executions=modules.executions.new(observer,modules.settings,valid,
                 function(s)logs[#logs+1]=s end,function()changed=changed+1 end)
-            FindObject=function()return nil end
+            elapsed=0;timers={}
+            ExecuteWithDelay=function(ms,fn)
+                if delayError then error('delay unavailable')end
+                timers[#timers+1]={due=elapsed+ms,callback=fn}
+            end
+            ExecuteInGameThread=function(fn)
+                local previous=inGameThread;inGameThread=true;fn();inGameThread=previous
+            end
+            function advance(ms)
+                elapsed=elapsed+ms
+                for _,timer in ipairs(timers)do
+                    if not timer.fired and timer.due<=elapsed then
+                        timer.fired=true;inGameThread=false
+                        assert(timer.callback()==nil);inGameThread=nil
+                    end
+                end
+            end
+            function reflected(short,path)
+                return {GetFName=function()return {ToString=function()return short end}end,
+                    GetFullName=function()return 'Function '..path..':'..short end}
+            end
+            local blueprint='/SGameExecution/GA/GA_ExecutionAbilityBase.GA_ExecutionAbilityBase_C'
+            local native='/Script/GameplayAbilities.GameplayAbility'
+            local functions={}
+            for _,short in ipairs({'Play Execution','K2_ActivateAbility','K2_OnEndAbility',
+                    'CanPerformExecution','SetCurrentExecutionInfo','Get Execution Start Time',
+                    'ReceiveExecutionFinish','Play Heavy Attack Timeline'})do
+                functions[#functions+1]=reflected(short,blueprint)
+            end
+            functions[#functions+1]=reflected('K2_ActivateAbility',native)
+            functions[#functions+1]=reflected('K2_OnEndAbility',native)
+            class={valid=true,ForEachFunction=function(_,fn)for _,v in ipairs(functions)do fn(v)end end,
+                GetSuperStruct=function()return nil end}
+            FindObject=function()return class end
+            registered={};registrations=0
+            RegisterHook=function(path,pre,post)
+                if registrationError then error('class bytecode not ready')end
+                registrations=registrations+1;registered[path]={pre,post}
+            end
+            function fire(short)
+                for path,callbacks in pairs(registered)do
+                    if path:match(':([^:]+)$')==short then
+                        local callback=callbacks[2] or callbacks[1]
+                        assert(callback({get=function()return ability end})==nil)
+                    end
+                end
+            end
         ''')
 
     def check(self, code):
         self.lua.execute(code)
 
-    def test_local_live_target_once_at_activation_and_rearm_after_end(self):
-        self.check("executions:begin(ability);executions:begin(ability);assert(changed==1 and observer.core.wins==1);executions:finish(ability);executions:begin(ability);assert(changed==2)")
+    def test_only_playing_paired_execution_requests_voice_after_two_full_seconds(self):
+        for name in ('GA_Hun_BEx_ChiZheCanJian_M_01_C', 'GA_Hun_BEx_ChiZheCanJian_M_02_C'):
+            with self.subTest(name=name):
+                self.setUp()
+                self.check("ability.name='"+name+"';executions:update('player',1);fire('Play Execution');fire('Play Execution');assert(#timers==1 and changed==0 and observer.core.wins==0);advance(1999);assert(changed==0);advance(1);assert(changed==1 and observer.core.wins==1);assert(enemy.AttributeSetBase.Health.CurrentValue==10);fire('K2_OnEndAbility');assert(changed==1);fire('Play Execution');assert(changed==1);advance(2000);assert(changed==2)")
 
-    def test_reject_other_actor_dead_target_wrong_class_pause_and_stop(self):
-        for reject in ("pawn.GetAddress=function()return 'other' end", 'enemy.AttributeSetBase.Health.CurrentValue=0', "ability.name='unrelated'", 'state.paused=true', 'state.inMenu=true', 'state.active=false', 'executions.enabled=false'):
+    def test_activation_availability_and_completion_never_request_voice(self):
+        self.check('''
+            executions:update('player',1)
+            for _,short in ipairs({'K2_ActivateAbility','CanPerformExecution','SetCurrentExecutionInfo',
+                    'Get Execution Start Time','ReceiveExecutionFinish','K2_OnEndAbility',
+                    'Play Heavy Attack Timeline'})do
+                fire(short);assert(changed==0 and observer.core.wins==0,short..' must not cue')
+            end
+            advance(2000);assert(#timers==0 and changed==0)
+            fire('Play Execution');advance(2000);assert(changed==1)
+        ''')
+
+    def test_simple_execution_and_heavy_attacks_cannot_cue_with_stale_live_target(self):
+        for name in ('GA_SimpleExecution_ChiZheCanJian_C', 'GA_SimpleExecution_ChiZheCanJian_Zui_C',
+                     'GA_Hun_ChiZheCanJian_Normal_B_C', 'GA_Hun_ChiZheCanJian_Tipsy_B_C',
+                     'GA_Hun_ChiZheCanJian_Drunk_B_C'):
+            with self.subTest(name=name):
+                self.setUp()
+                self.check("ability.name='"+name+"';ability.ExecutionTarget=enemy;executions:update('player',1);fire('K2_ActivateAbility');fire('Play Execution');advance(2000);assert(#timers==0 and changed==0 and observer.core.wins==0)")
+
+    def test_missing_or_unstarted_timeline_never_requests_or_queues_voice(self):
+        for reject in ('playing=false', 'ability.ExecutionTimeline=nil', 'timeline.valid=false'):
             with self.subTest(reject=reject):
                 self.setUp()
-                self.check(reject+";executions:begin(ability);assert(changed==0 and observer.core.wins==0)")
+                self.check(reject+";executions:update('player',1);fire('Play Execution');advance(2000);assert(#timers==0 and changed==0 and observer.core.wins==0);playing=true;timeline.valid=true;ability.ExecutionTimeline=timeline;executions:update('player',2);assert(changed==0);fire('Play Execution');advance(2000);assert(changed==1)")
+
+    def test_reject_other_actor_dead_target_wrong_class_pause_and_stop(self):
+        for reject in ("pawn.GetAddress=function()return 'other' end", 'enemy.AttributeSetBase.Health.CurrentValue=0',
+                       'enemy.valid=false', 'ability.valid=false', "ability.name='unrelated'", 'state.paused=true',
+                       'state.inMenu=true', 'state.active=false', 'executions.enabled=false',
+                       "ability['Execution Info'].Executor=obj('other')", "ability['Execution Info'].Executor=nil",
+                       "ability['Execution Info'].IsTarget=true", "ability['Execution Info'].Target=pawn",
+                       "ability['Execution Info']=nil"):
+            with self.subTest(reject=reject):
+                self.setUp()
+                self.check(reject+";executions:begin(ability);advance(2000);assert(#timers==0 and changed==0 and observer.core.wins==0)")
 
     def test_weapon_execution_weak_target_and_inherited_hook_dedup(self):
-        self.check("ability.name='GA_Hun_BEx_ChiZheCanJian_M_01_C';ability['Execution Info']={Target={Get=function()return enemy end}};executions:begin(ability);executions:begin(ability);assert(changed==1)")
+        self.check("ability['Execution Info'].Target={Get=function()return enemy end};ability['Execution Info'].Executor={Get=function()return pawn end};executions:update('player',1);executions:update('player',2);assert(registrations==3);fire('Play Execution');fire('Play Execution');advance(2000);assert(#timers==1 and changed==1)")
 
     def test_blueprint_and_native_post_hooks_do_not_return_values(self):
         self.check('''
-            local functions={
-                {GetFName=function()return {ToString=function()return 'K2_ActivateAbility' end}end,
-                 GetFullName=function()return 'Function /Game/Ability:K2_ActivateAbility' end},
-                {GetFName=function()return {ToString=function()return 'K2_OnEndAbility' end}end,
-                 GetFullName=function()return 'Function /Script/GameplayAbilities.GameplayAbility:K2_OnEndAbility' end}}
-            class={valid=true,ForEachFunction=function(_,fn)for _,v in ipairs(functions)do fn(v)end end,GetSuperStruct=function()return nil end}
-            FindObject=function()return class end
-            registered={};RegisterHook=function(path,pre,post)registered[path]={pre,post}end
             executions:update('player',1)
-            local begin=registered['/Game/Ability:K2_ActivateAbility'];local ending=registered['/Script/GameplayAbilities.GameplayAbility:K2_OnEndAbility']
+            local begin=registered['/SGameExecution/GA/GA_ExecutionAbilityBase.GA_ExecutionAbilityBase_C:Play Execution']
+            local ending=registered['/Script/GameplayAbilities.GameplayAbility:K2_OnEndAbility']
             assert(begin[1] and not begin[2] and ending[1] and ending[2])
+            for path in pairs(registered)do
+                assert(not path:find('K2_ActivateAbility',1,true),'activation is not an execution start')
+            end
             local ctx={get=function()return ability end}
-            assert(begin[1](ctx)==nil and changed==1);assert(begin[1](ctx)==nil and changed==1)
-            assert(ending[2](ctx)==nil);begin[1](ctx);assert(changed==2)
+            assert(begin[1](ctx)==nil and changed==0);assert(begin[1](ctx)==nil and changed==0)
+            advance(2000);assert(changed==1)
+            assert(ending[1](ctx)==nil);begin[1](ctx);assert(changed==1)
+            assert(ending[2](ctx)==nil);begin[1](ctx);assert(changed==1);advance(2000);assert(changed==2)
         ''')
+
+    def test_hook_registration_retries_and_query_errors_do_not_change_game_returns(self):
+        self.check('''
+            registrationError=true;executions:update('player',1);assert(registrations==0)
+            registrationError=false;executions:update('player',2);assert(registrations==3)
+            ability.IsPlayingTimeline=function()error('timeline unavailable')end
+            fire('Play Execution');assert(changed==0 and observer.core.wins==0)
+            assert(logs[#logs]:find('EXECUTION_HOOK_ERROR',1,true))
+        ''')
+
+    def test_short_execution_and_target_death_do_not_cancel_confirmed_start_cue(self):
+        self.check('''
+            executions:begin(ability);advance(400);executions:finish(ability)
+            playing=false;enemy.AttributeSetBase.Health.CurrentValue=0;ability.valid=false
+            advance(1599);assert(changed==0);advance(1);assert(changed==1)
+            timers[1].callback();advance(2000);assert(changed==1 and observer.core.wins==1)
+        ''')
+
+    def test_death_player_change_and_stop_discard_delayed_voice(self):
+        for cancel in ('state.active=false', "state.player='new-player'", 'executions.enabled=false'):
+            with self.subTest(cancel=cancel):
+                self.setUp()
+                self.check("executions:begin(ability);advance(500);"+cancel+";advance(1500);assert(changed==0 and observer.core.wins==0);state.active=true;state.player='player';executions.enabled=true;timers[1].callback();assert(changed==0)")
+
+    def test_observed_inactive_state_cancels_even_if_player_returns_before_delay(self):
+        self.check('''
+            executions:begin(ability);advance(400)
+            executions:update('player',os.time(),false)
+            executions:update('player',os.time(),true)
+            advance(1600);assert(changed==0 and observer.core.wins==0)
+        ''')
+
+    def test_menu_keeps_confirmed_cue_for_existing_audio_pause_handling(self):
+        self.check("executions:begin(ability);state.inMenu=true;state.paused=true;advance(2000);assert(changed==1 and observer.core.wins==1)")
+
+    def test_delay_failure_never_falls_back_to_immediate_voice(self):
+        self.check("delayError=true;executions:begin(ability);assert(#timers==0 and next(executions.waiting)==nil and changed==0);assert(logs[#logs]:find('EXECUTION_DELAY_ERROR',1,true))")
 
 
 if __name__ == '__main__':

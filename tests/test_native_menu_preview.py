@@ -70,7 +70,7 @@ with wave.open(str(wav_path), 'wb') as output:
     output.writeframes(actual.tobytes())
 report = {
     'duration_seconds': 24, 'entry_seconds': 6, 'exit_seconds': 16, 'transition_seconds': .4,
-    'filter': effect, 'reference': 'FFmpeg on the same 48 kHz PCM source as the packaged music',
+    'filter': effect, 'reference': 'FFmpeg on the same 48 kHz PCM decoded from the original music',
     'maximum_error_pcm16': maximum, 'rms_error_pcm16': math.sqrt(squared / count),
     'music_frames_advanced': 24 * 48000, 'clipped_output_samples': 0,
     'native_render': str(wav_path),

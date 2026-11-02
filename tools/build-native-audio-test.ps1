@@ -12,10 +12,14 @@ $env:ZIG_LOCAL_CACHE_DIR = Join-Path $project '.local\cache\zig-local'
 $source = Join-Path $project 'probes\JamieWinNativeAudioTest\Native\audio.c'
 $mixer = Join-Path $project 'probes\JamieWinNativeAudioTest\Native\mixer.c'
 $filter = Join-Path $project 'probes\JamieWinNativeAudioTest\Native\menu_filter.c'
+$decoder = Join-Path $project 'probes\JamieWinNativeAudioTest\Native\media_decode.c'
 $dll = Join-Path $output 'JamieWinAudio.dll'
-& $Compiler cc -target x86_64-windows-gnu -std=c11 -O2 -Wall -Wextra -Werror -shared $source $mixer $filter -lwinmm -o $dll
+& $Compiler cc -target x86_64-windows-gnu -std=c11 -O2 -Wall -Wextra -Werror -shared $source $mixer $filter $decoder -lwinmm -lmfplat -lmfreadwrite -lmfuuid -lole32 -o $dll
 if ($LASTEXITCODE -ne 0) { throw 'Native audio DLL build failed.' }
-foreach ($inputName in @('mr_top_player.m4a','mandarin_duck_play.mp3','jamie_drink4_ja.wav','jamie_wins.wav')) {
+foreach ($inputName in @('mr_top_player.m4a','mandarin_duck_play.mp3')) {
+    Copy-Item -LiteralPath (Join-Path $project ('resources\audio\' + $inputName)) -Destination $output
+}
+foreach ($inputName in @('jamie_drink4_ja.wav','jamie_wins.wav')) {
     $inputPath = Join-Path $project ('resources\audio\' + $inputName)
     $wave = Join-Path $output ([IO.Path]::GetFileNameWithoutExtension($inputName) + '.wav')
     & $FFmpeg -hide_banner -loglevel error -nostdin -y -i $inputPath -map 0:a:0 -vn -map_metadata -1 -ac 2 -ar 48000 -c:a pcm_s16le $wave

@@ -288,3 +288,70 @@ SHA256：`bb671e984be6c6949d76eefe6b1171c7a7e1943dba7e2986dea0da1226a871ac`。
 本轮构建及发布包检查通过：ZIP CRC、文件集合、SHA256、元数据、Lua/DLL 内部版本
 与源码一致。对比 0.5.0 包，4 份音频与 8 份业务 Lua 字节一致，仅版本配置、DLL、
 元数据和说明文件变化。游戏内验收采用用户本次确认的结果。
+
+## 2026-11-02：1.0.1 原始音频与单曲音量
+
+直接打包 `mr_top_player.m4a` 和 `mandarin_duck_play.mp3`，不重新编码两首音乐。
+新增 `Native/media_decode.c`，通过 Windows Media Foundation 在工作线程内解码为
+48 kHz、双声道 PCM16，再交给原有混音器；不生成运行时 WAV，不需要外部播放器。
+参考：[Microsoft Source Reader 解码说明](https://learn.microsoft.com/en-us/windows/win32/medfound/tutorial--decoding-audio)。
+解码验证输出格式、64 MiB 上限和错误清理，停止全部音频时释放 PCM。
+
+只将《Mr.Top.Player》的混音增益乘以 1.2（约 +1.58 dB），正常/语音压低时的默认
+增益分别为 0.54/0.24；《鸳鸯戏》和两段语音保留原有音量。游戏音量滑块、零音量、
+菜单渐变、循环位置和语音压低仍由原混音器处理。
+
+本轮验证通过：46 项 Lua 回归、10 项 C 混音检查、菜单滤波离线对照、原始音频解码
+对照与 5 项静音设备检查。M4A 解码与 FFmpeg 参考在测试窗口逐样本一致；MP3 重采样
+后的相关度为 0.99946，解码器首尾填充导致总时长约多 63.5 ms。两首本机首次解码
+分别耗时 984 ms、750 ms。解码对照还覆盖中文路径、损坏/缺失文件与 PCM 容量上限。
+证据位于 `.local/native-audio-test/decode-check-dd5265aaca59439d9f11689a14bec89a/`；
+菜单与设备证据使用同目录下本轮 `menu-preview-check-*`、`*-device-check-*` 目录。
+未启动或操作游戏，本次改动尚未做游戏内试听验收。
+
+20:42:09（香港时间）生成 `.local/releases/20261102-204209/JamieWin-1.0.1.zip`，
+10,636,707 字节（10.64 MB / 10.14 MiB），相比 1.0.0 缩小 84.54%。
+SHA256：`bde0ecffa56b9079de05111d334014d016427b02d823dd88e733c794cd484e15`。
+构建记录为 `.local/native-audio-test/release-1.0.1-audio.json`。
+已核对 ZIP CRC、18 个文件、SHA256、版本一致性、两首音乐与源文件字节一致，
+两段语音与 1.0.0 包字节一致，包内不含旧音乐 WAV。
+包按当前工作区 Lua 源码生成，也包含同步进行的处决动画触发修复；本轮没有覆盖该修改。
+
+## 2026-11-02：1.0.2 音量与音效叠加
+
+按用户要求，《Mr.Top.Player》在 1.0.1 基础上再提高 20%：单曲系数从 1.2 改为
+1.44，默认音乐增益从 0.54 改为 0.648。《鸳鸯戏》仍为 0.45。
+移除四酒和 Jamie wins 播放时的音乐自动压低，两段音效单独或同时触发时直接混音，
+两首歌曲保持增益和播放位置；语音音量、游戏滑块、菜单滤波与语音菜单暂停规则沿用。
+音乐和语音源文件均未修改，仍使用原始 M4A/MP3 小体积打包。
+
+验证通过：46 项 Lua 检查、10 组 C 混音回归、菜单滤波离线参考以及 5 项静音设备
+检查。新增混音断言覆盖两首歌与两种音效单独/同时叠加，在触发瞬间、播放期间和结束
+后检查实际 PCM、增益、音乐帧计数与循环位置。设备检查在正常换曲淡入后确认语音
+期间增益保持 0.648（滑块缩小场景为 0.144）或 0.45。菜单滤波参考最大误差仍小于
+1 个 PCM16 单位。新版未进行游戏内试听，所有设备检查只播放生成的静音。
+菜单证据：`.local/native-audio-test/menu-preview-check-aec7c97a599d4f7ab9205d7c1c7be87a/`。
+完整设备证据：`.local/native-audio-test/full-device-check-76eed3418ede4d77893f69fa4d3a3e17/`。
+
+21:12:42（香港时间）生成 `.local/releases/20261102-211242/JamieWin-1.0.2.zip`，
+10,636,713 字节（10.64 MB），18 个文件。
+SHA256：`5ed2d68643fe1ae392b5ca8d63b2637315efb8295a04b182f9ae235cd083e26a`。
+ZIP CRC、版本、源码与包内 Lua 对应、全部音频与 1.0.1 字节一致的检查均通过；
+构建与校验记录为 `.local/native-audio-test/release-1.0.2-audio.json` 和
+`.local/native-audio-test/release-verify-1.0.2-audio.json`。
+
+## 2026-11-03：1.1.0 发布验证
+
+将当前音频与处决更新统一为 `1.1.0`，Lua 和 DLL 内部版本为 `1.1.0-stable`。
+包含原始 M4A/MP3 解码、Mr.Top.Player 音量提升、语音叠加时保持音乐音量与进度，
+以及成对处决动画开始后延迟 2000 ms 播放 Jamie wins。安装 ID 继续沿用
+`JamieWinNativeAudioTest`。
+
+本地验证通过：37 项音频适配、4 项菜单检测、10 项共享 Lua、10 组 C 混音、
+两首原始音乐的离线解码对照、菜单滤波参考和 5 项静音设备检查。
+安装包包含 18 个文件；ZIP CRC、SHA256、版本一致性、包内 Lua 语法及原始音乐
+字节一致性检查全部通过。此轮没有进行游戏内试听。
+
+本地构建：`.local/releases/20261103-002821/JamieWin-1.1.0.zip`，10,637,150 字节。
+SHA256：`3fdff9e6baf841a777c5a9e113cb85abb6b536b15602b68775ba405706b7096e`。
+GitHub Release 由对应标签触发云端重新构建，公开附件以 Release 页面上的校验值为准。

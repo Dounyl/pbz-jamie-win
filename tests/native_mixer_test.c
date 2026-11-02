@@ -20,22 +20,34 @@ static void expect_sample(int index,int left,int right) {
     assert(abs((int)pcm[index*2]-left)<=1);assert(abs((int)pcm[index*2+1]-right)<=1);
 }
 static void gain_and_silence(void) {
-    JWMixer m=make_mixer();jw_render(&m,pcm,1000);expect_sample(999,4500,-4500);
-    m.music_volume=.225f;jw_render(&m,pcm,1000);expect_sample(999,2250,-2250);
+    JWMixer m=make_mixer();jw_render(&m,pcm,1000);expect_sample(999,6480,-6480);
+    m.music_volume=.225f;jw_render(&m,pcm,1000);expect_sample(999,3240,-3240);
     m.music_volume=0;jw_render(&m,pcm,1000);expect_sample(999,0,0);
     assert(m.music_rendered==3000);puts("PASS software gain and zero volume preserve playback");
 }
-static void voice_duck_and_recover(void) {
-    JWMixer m=make_mixer();jw_render(&m,pcm,1000);jw_cue(&m,0);
-    JWBlock b=jw_render(&m,pcm,1000);expect_sample(999,2900,-2900);
-    assert(b.music&&b.drink&&!b.win);assert(fabsf(m.gain-.2f)<.00001f);
-    jw_render(&m,pcm,2000);expect_sample(1999,4500,-4500);
-    assert(!m.cue_active[0]&&m.music_rendered==4000);
-    puts("PASS four-drink cue gain, duck and automatic music recovery");
+static void voice_overlay_preserves_music(void) {
+    for(int track=1;track<=2;track++) for(int cues=1;cues<=3;cues++) {
+        JWMixer m=make_mixer();jw_music(&m,track);jw_render(&m,pcm,1000);
+        int music=track==1 ? 6480 : 4500;
+        int voice_mix=((cues&1) ? 900 : 0)+((cues&2) ? 1000 : 0);
+        float gain=m.gain;size_t cursor=m.music_frame;
+        if(cues&1) jw_cue(&m,0);
+        if(cues&2) jw_cue(&m,1);
+        assert(m.music_frame==cursor&&m.music_rendered==1000);
+        JWBlock b=jw_render(&m,pcm,1000);
+        expect_sample(0,music+voice_mix,-music-voice_mix);
+        expect_sample(999,music+voice_mix,-music-voice_mix);
+        assert(b.music&&b.drink==!!(cues&1)&&b.win==!!(cues&2));
+        assert(fabsf(m.gain-gain)<.00001f&&m.music_frame==2000%7);
+        jw_render(&m,pcm,2000);expect_sample(1999,music,-music);
+        assert(!m.cue_active[0]&&!m.cue_active[1]&&m.music_rendered==4000&&m.music_frame==4000%7);
+        assert(fabsf(m.gain-gain)<.00001f);
+    }
+    puts("PASS either/both cues overlay both songs without gain changes, pauses or restarts");
 }
 static void simultaneous_voices(void) {
     JWMixer m=make_mixer();jw_cue(&m,0);jw_cue(&m,1);
-    JWBlock b=jw_render(&m,pcm,1000);expect_sample(999,3900,-3900);
+    JWBlock b=jw_render(&m,pcm,1000);expect_sample(999,8380,-8380);
     assert(b.music&&b.drink&&b.win);
     jw_render(&m,pcm,2000);assert(!m.cue_active[0]&&!m.cue_active[1]);
     puts("PASS independent voice channels finish exactly once");
@@ -65,12 +77,12 @@ static void menu_round_trip_keeps_music_position(void) {
     jw_menu(&m,1);
     for(int i=0;i<20;i++)jw_render(&m,pcm,1000);
     assert(m.menu.mix==1 && m.music_rendered==21000 && m.music_frame==21000%7);
-    expect_sample(999,4050,-4050); /* Same preview: wet gain .9, music gain .45. */
+    expect_sample(999,5832,-5832); /* Wet gain .9, boosted armed music gain .648. */
     jw_menu(&m,1);assert(m.menu.mix==1); /* Polling must not restart a ramp. */
     jw_menu(&m,0);
     for(int i=0;i<20;i++)jw_render(&m,pcm,1000);
     assert(m.menu.mix==0 && m.music_rendered==41000 && m.music_frame==41000%7);
-    expect_sample(999,4500,-4500);
+    expect_sample(999,6480,-6480);
     puts("PASS menu fades in/out without rewinding, pausing or changing loop position");
 }
 static void menu_holds_voices_but_not_music(void) {
@@ -102,9 +114,16 @@ static void rapid_menu_reversals_are_continuous(void) {
     assert(filter.mix==0);
     puts("PASS rapid menu reversal has no blend discontinuity and ends fully clear");
 }
+static void drunk_music_keeps_original_gain(void) {
+    JWMixer m=make_mixer();jw_music(&m,2);
+    jw_render(&m,pcm,1000);expect_sample(999,4500,-4500);
+    jw_cue(&m,0);jw_render(&m,pcm,1000);expect_sample(999,5400,-5400);
+    assert(fabsf(m.gain-.45f)<.00001f);
+    puts("PASS only Mr.Top.Player is boosted; drunk music and voices retain their levels");
+}
 int main(void) {
-    gain_and_silence();voice_duck_and_recover();simultaneous_voices();
+    gain_and_silence();voice_overlay_preserves_music();simultaneous_voices();
     loops_and_no_restart();saturating_mix();stop_all_channels();
     menu_round_trip_keeps_music_position();menu_holds_voices_but_not_music();
-    rapid_menu_reversals_are_continuous();return 0;
+    rapid_menu_reversals_are_continuous();drunk_music_keeps_original_gain();return 0;
 }

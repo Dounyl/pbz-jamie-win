@@ -46,8 +46,8 @@ class LuaTests(unittest.TestCase):
                 assert(not c:executionStarted(field,good))
                 good[field] = true
             end
-            assert(c:executionStarted('execution-1',good), 'play at activation without waiting for a kill')
-            assert(not c:executionStarted('execution-1',good), 'inherited activation hooks must not replay')
+            assert(c:executionStarted('execution-1',good), 'play at execution start without waiting for a kill')
+            assert(not c:executionStarted('execution-1',good), 'inherited start hooks must not replay')
             assert(c:executionStarted('execution-2',good))
             assert(c.wins==2)
         ''')

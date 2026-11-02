@@ -31,7 +31,7 @@ foreach ($name in @('main.lua','probe_settings.lua','gameplay.lua','native_audio
 foreach ($name in @('core.lua','weapon.lua','settings.lua')) {
     Copy-Item -LiteralPath (Join-Path $project ('mods\JamieWin\Scripts\' + $name)) -Destination (Join-Path $mod 'Scripts')
 }
-foreach ($name in @('mandarin_duck_play.wav','mr_top_player.wav','jamie_drink4_ja.wav','jamie_wins.wav')) {
+foreach ($name in @('mandarin_duck_play.mp3','mr_top_player.m4a','jamie_drink4_ja.wav','jamie_wins.wav')) {
     Copy-Item -LiteralPath (Join-Path $build.Output $name) -Destination (Join-Path $mod 'Audio')
 }
 Copy-Item -LiteralPath $build.DLL -Destination (Join-Path $mod 'Native')
@@ -41,7 +41,7 @@ Copy-Item -LiteralPath $metadataPath -Destination (Join-Path $mod 'mod.json')
 Copy-Item -LiteralPath (Join-Path $project 'packaging\NATIVE-AUDIO-TEST-README.txt') -Destination (Join-Path $stage 'JamieWin-NativeAudioTest-Readme.txt')
 
 $unexpected = Get-ChildItem -LiteralPath $stage -File -Recurse | Where-Object {
-    $_.Extension -notin @('.lua','.wav','.txt','.dll','.json') -and $_.Name -ne '.keep'
+    $_.Extension -notin @('.lua','.wav','.mp3','.m4a','.txt','.dll','.json') -and $_.Name -ne '.keep'
 }
 if ($unexpected) { throw 'Unexpected file in native-only test package.' }
 $dlls = @(Get-ChildItem -LiteralPath $stage -Filter '*.dll' -File -Recurse)

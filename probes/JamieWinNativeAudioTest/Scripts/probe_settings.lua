@@ -1,4 +1,4 @@
 return {
-    Version = "1.0.0-stable",
+    Version = "1.1.0-stable",
     StatusTimeoutSeconds = 10,
 }

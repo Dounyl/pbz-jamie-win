@@ -35,7 +35,7 @@ local function tick()
         return
     end
     local state=observer:sample()
-    executions:update(state.player,now)
+    executions:update(state.player,now,state.active)
     local diagnostic="track="..state.track.."; state="..state.state.."; player="..state.player
         .."; paused="..tostring(state.paused).."; menu="..tostring(state.inMenu).."; drink="..state.heavy.."; wins="..state.wins.."; "..state.detail
     if diagnostic~=lastState then lastState=diagnostic;log("GAMEPLAY "..diagnostic) end
@@ -62,7 +62,7 @@ schedule=function()
 end
 executions=Executions.new(observer,settings,valid,log,schedule)
 log("BOOT "..config.Version.."; real gameplay; in-process music+voices; follows game sliders; F10 stops")
-log("SCOPE mute/restore original music; four-drink cue; execution activation cue; voice ducking; menu lowpass with continuous music")
+log("SCOPE mute/restore original music; four-drink cue; paired execution animation start cue; voice overlay without music ducking; menu lowpass with continuous music")
 local keyOk,keyError=pcall(function()
     RegisterKeyBindAsync(Key.F10,function()stopRequested=true end)
 end)

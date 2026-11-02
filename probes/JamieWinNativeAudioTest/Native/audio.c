@@ -9,7 +9,8 @@
 #include <wchar.h>
 #include <math.h>
 #include "mixer.h"
-#define VERSION "1.0.0-stable"
+#include "media_decode.h"
+#define VERSION "1.1.0-stable"
 #define PATH_CAP 32768
 #define MAX_PCM (64u*1024u*1024u)
 #define BUFFER_COUNT 4
@@ -113,6 +114,18 @@ static BOOL read_exact(HANDLE f,void *data,DWORD size) {
 }
 static BOOL load_asset(int index) {
     wchar_t path[PATH_CAP];
+    if(index<2) {
+        const wchar_t *extension=index==0 ? L"m4a" : L"mp3";
+        if(swprintf(path,PATH_CAP,L"%ls\\Audio\\%ls.%ls",root,asset_names[index],extension)<0) {
+            fail("asset_path",ERROR_FILENAME_EXCED_RANGE); return FALSE;
+        }
+        ULONGLONG began=GetTickCount64();
+        HRESULT hr=jw_decode_audio(path,&mixer.assets[index],MAX_PCM);
+        if(FAILED(hr)) { fail("decode_audio",(DWORD)hr); return FALSE; }
+        log_line("DECODE asset=%d; frames=%llu; elapsed_ms=%llu; rate=48000",index,
+            (unsigned long long)mixer.assets[index].frames,(unsigned long long)(GetTickCount64()-began));
+        return TRUE;
+    }
     if(swprintf(path,PATH_CAP,L"%ls\\Audio\\%ls.wav",root,asset_names[index])<0) { fail("asset_path",ERROR_FILENAME_EXCED_RANGE); return FALSE; }
     HANDLE f=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
     if(f==INVALID_HANDLE_VALUE) { fail("open_pcm",GetLastError()); return FALSE; }

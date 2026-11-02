@@ -9,7 +9,7 @@ on:
       tag:
         description: Existing release tag to build
         required: true
-        default: v1.0.0
+        default: v1.1.0
         type: string
 
 permissions:
@@ -74,6 +74,7 @@ jobs:
             'test_native_menu_detection.py',
             'test_lua.py',
             'test_native_mixer.py',
+            'test_native_audio_decode.py',
             'test_native_menu_preview.py'
           )) {
             python (Join-Path tests $test)
@@ -109,6 +110,14 @@ jobs:
               version = metadata['version'] + '-' + metadata['channel']
               assert 'Version = "' + version + '"' in package.read(base + 'Scripts/probe_settings.lua').decode()
               assert version.encode() in package.read(base + 'Native/JamieWinAudio.dll')
+              for name in ('mr_top_player.m4a', 'mandarin_duck_play.mp3'):
+                  assert package.read(base + 'Audio/' + name) == Path('resources/audio', name).read_bytes()
+              assert base + 'Audio/mr_top_player.wav' not in package.namelist()
+              assert base + 'Audio/mandarin_duck_play.wav' not in package.namelist()
+              for name in ('mr_top_player.m4a', 'mandarin_duck_play.mp3'):
+                  assert package.read(base + 'Audio/' + name) == Path('resources/audio', name).read_bytes()
+              assert base + 'Audio/mr_top_player.wav' not in package.namelist()
+              assert base + 'Audio/mandarin_duck_play.wav' not in package.namelist()
           print(f'Verified {archive.name}: {len(files)} files, SHA256 {digest}')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw 'Release package verification failed.' }
