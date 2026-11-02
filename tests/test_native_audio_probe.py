@@ -7,14 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / '.local/cache/testdeps'))
 from lupa.lua54 import LuaRuntime
 PROBE = ROOT / 'probes/JamieWinNativeAudioTest/Scripts'
-SHARED = ROOT / 'mods/JamieWin/Scripts'
 
 
 def runtime():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute('modules={}')
     for name in ('probe_settings', 'native_audio', 'game_audio', 'executions', 'gameplay', 'core', 'weapon', 'settings'):
-        path = (SHARED if name in ('core', 'weapon', 'settings') else PROBE) / (name + '.lua')
+        path = PROBE / (name + '.lua')
         lua.execute('local n,s=...;modules[n]=assert(load(s))()', name, path.read_text(encoding='utf-8'))
     return lua
 

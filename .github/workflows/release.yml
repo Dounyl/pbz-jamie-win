@@ -34,7 +34,7 @@ jobs:
       - name: Validate release tag
         run: |
           if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') {
-            throw 'Use an existing release tag such as v1.0.0.'
+            throw 'Use an existing release tag such as v1.1.0.'
           }
 
       - name: Check out release source

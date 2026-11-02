@@ -4,7 +4,7 @@
 
 当前版本：**1.1.0**。通过 **UEMM（UE MM）** 安装，装好后正常进游戏就能用。
 
-《Mr.Top.Player》比 1.0.1 再提高 20%；四酒和「Jamie wins」音效直接叠加，背景音乐保持原有音量和播放进度。继续使用原始 M4A / MP3 小体积安装包。
+四酒和「Jamie wins」音效直接叠加，背景音乐保持原有音量和播放进度。两首音乐使用原始 M4A / MP3，小体积打包。
 
 ## 视频演示
 
@@ -20,9 +20,9 @@
 4. 把 **`JamieWin-1.1.0.zip`** 拖进 UEMM，确认名称是 **JamieWin**、版本是 **1.1.0**，安装并启用。
 5. 从 Steam 正常启动游戏。
 
-ZIP 直接导入即可，不用手动解压，也不用运行仓库里的 PowerShell 脚本或外部播放器。
+ZIP 直接导入即可，不用手动解压。
 
-安装预览里的文件应放在 `platform/steam/ue4ss/Mods/JamieWinNativeAudioTest/`。文件夹沿用旧名字，方便更新。
+安装预览里的文件应放在 `platform/steam/ue4ss/Mods/JamieWinNativeAudioTest/`。
 
 已验证环境：Windows x64、PBZ Steam build `26266538`、UE4SS `v3.0.1-1195-g1ceefac8`。其他版本还没测过。UEMM 的使用方法见[官方说明](https://github.com/KintaroModding/uemodmanager/blob/main/openmods.md)。
 
@@ -74,7 +74,7 @@ ZIP 直接导入即可，不用手动解压，也不用运行仓库里的 PowerS
 
 以下内容供开发使用，玩家按上面的 UEMM 步骤安装即可。
 
-当前实现位于 `probes/JamieWinNativeAudioTest/`，共享原有 `core.lua`、`weapon.lua` 和 `settings.lua`。在项目根目录执行：
+当前版本的全部 Lua 和原生音频源码位于 `probes/JamieWinNativeAudioTest/`。在项目根目录执行：
 
 ```powershell
 & ./tools/build-native-audio-test.ps1
@@ -90,4 +90,4 @@ python tests/test_native_audio_device.py
 
 构建依赖项目缓存中的 Zig 0.13.0 和 FFmpeg，Lua 检查使用 `.local/cache/testdeps` 中的 Lupa。两首音乐直接复制原始文件，由 Windows Media Foundation 在进程内解码，FFmpeg 只用于构建语音 PCM 和离线参考检查。构建脚本支持显式传入编译器和 FFmpeg 路径。产物仅写入 `.local/`；设备检查只播放生成的静音数据，音乐解码与混音检查离线运行，不安装或操作游戏。
 
-实现和测试记录见 [开发记录](docs/native-audio-probe.md)。[旧外部播放器版说明](docs/legacy-external-player.md)仅供查阅，不适用于当前版本。
+源码结构、播放规则和验证方法见 [开发与构建](docs/development.md)。

@@ -1,8 +1,8 @@
 JamieWin 1.1.0 · 影之刃零醉剑音频 Mod
 
 通过 UEMM（UE MM）安装，装好后正常进游戏就能用。
-《Mr.Top.Player》比 1.0.1 再提高 20%；四酒和 Jamie wins 音效直接叠加，背景音乐保持音量和进度。
-继续使用原始 M4A / MP3 小体积安装包。
+四酒和 Jamie wins 音效直接叠加，背景音乐保持音量和进度。
+两首音乐使用原始 M4A / MP3，小体积打包。
 
 安装
 UEMM 下载地址：https://github.com/KintaroModding/uemodmanager/releases
@@ -13,9 +13,8 @@ UEMM 下载地址：https://github.com/KintaroModding/uemodmanager/releases
 4. 把 JamieWin-1.1.0.zip 拖进 UEMM，确认名称 JamieWin、版本 1.1.0，安装并启用。
 5. 从 Steam 正常启动游戏。
 
-ZIP 直接导入，不用手动解压，也不用运行 PowerShell 脚本或外部播放器。
+ZIP 直接导入，不用手动解压。
 安装预览中的文件应放在 platform/steam/ue4ss/Mods/JamieWinNativeAudioTest/。
-文件夹沿用旧名字，方便更新。
 UEMM 使用说明：https://github.com/KintaroModding/uemodmanager/blob/main/openmods.md
 
 怎么播放
@@ -40,7 +39,7 @@ UEMM 使用说明：https://github.com/KintaroModding/uemodmanager/blob/main/ope
 
 更新、停用和卸载
 先退出游戏，再到 UEMM 里选中 JamieWin 操作。更新时用新的 ZIP 更新现有条目。
-同时只启用一个 JamieWin 版本；用过旧的外部播放器版，要先停用旧版并关闭播放器。
+同时只启用一个 JamieWin 版本。
 
 遇到问题
 反馈时说一下做了什么、听到了什么，并附上这些日志：
@@ -49,4 +48,4 @@ UEMM 使用说明：https://github.com/KintaroModding/uemodmanager/blob/main/ope
 
 已验证环境
 Windows x64、PBZ Steam build 26266538、UE4SS v3.0.1-1195-g1ceefac8。
-其他版本还没测过。实现和测试记录见源码中的 docs/native-audio-probe.md。
+其他版本还没测过。源码结构和验证方法见源码中的 docs/development.md。

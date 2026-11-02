@@ -1,4 +1,4 @@
--- Full in-process candidate, installed independently of the legacy external-player mod.
+-- In-process music and voice playback, driven by observed game state.
 local source=debug.getinfo(1,"S").source:gsub("^@",""):gsub("\\","/")
 local root=assert(source:match("^(.*)/Scripts/[^/]+$"),"Cannot locate native mod")
 local function module(name)return dofile(root.."/Scripts/"..name..".lua")end

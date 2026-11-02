@@ -18,7 +18,7 @@ int jw_active(const JWMixer *m) { return m->music || (!m->menu.target && (m->cue
 JWBlock jw_render(JWMixer *m, int16_t *output, size_t frames) {
     JWBlock block = {0,0,0,0};
     for (size_t f=0; f<frames; ++f) {
-        // Mr.Top.Player is 20% louder than 1.0.1. Cues overlay music without ducking.
+        // Mr.Top.Player uses a 1.44x track gain. Cues overlay music without ducking.
         float track_gain = m->music == 1 ? 1.44f : 1.0f;
         float target = m->music_volume * track_gain;
         float step = 1.0f / 960.0f; // At most 20 ms for a full-scale gain change.

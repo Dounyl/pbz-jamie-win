@@ -25,11 +25,8 @@ $mod = Join-Path $stage ('platform\steam\ue4ss\Mods\' + $metadata.id)
 foreach ($folder in @('Scripts','Audio','Native','runtime')) {
     New-Item -ItemType Directory -Path (Join-Path $mod $folder) -Force | Out-Null
 }
-foreach ($name in @('main.lua','probe_settings.lua','gameplay.lua','native_audio.lua','game_audio.lua','executions.lua')) {
+foreach ($name in @('main.lua','probe_settings.lua','gameplay.lua','native_audio.lua','game_audio.lua','executions.lua','core.lua','weapon.lua','settings.lua')) {
     Copy-Item -LiteralPath (Join-Path $probe ('Scripts\' + $name)) -Destination (Join-Path $mod 'Scripts')
-}
-foreach ($name in @('core.lua','weapon.lua','settings.lua')) {
-    Copy-Item -LiteralPath (Join-Path $project ('mods\JamieWin\Scripts\' + $name)) -Destination (Join-Path $mod 'Scripts')
 }
 foreach ($name in @('mandarin_duck_play.mp3','mr_top_player.m4a','jamie_drink4_ja.wav','jamie_wins.wav')) {
     Copy-Item -LiteralPath (Join-Path $build.Output $name) -Destination (Join-Path $mod 'Audio')

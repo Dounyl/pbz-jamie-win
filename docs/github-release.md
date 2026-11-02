@@ -11,7 +11,7 @@
 
 ## 为已有 Release 补包
 
-在仓库 **Actions → Build release → Run workflow** 中选择 `main`，填写已有 Release 的标签，例如 `v1.0.0`。工作流从 `main` 读取最新构建流程，从指定标签读取待发布源码，因此可为加入工作流之前的版本补包。
+在仓库 **Actions → Build release → Run workflow** 中选择 `main`，填写已有 Release 的标签，例如 `v1.1.0`。工作流从 `main` 读取构建流程，从指定标签读取待发布源码。
 
 重新运行会替换同名附件，发布说明中的其他内容保留。构建时间会影响 ZIP 和 DLL 的字节内容，每次构建以新生成的 SHA256 为准。
 
