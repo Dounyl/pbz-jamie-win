@@ -1,6 +1,6 @@
 # 开发与构建
 
-当前源码为 **0.0.20261103 事件驱动测试版**（运行时 `0.0.20261103-event-test`），音频在游戏进程内播放。源码集中在 `probes/JamieWinNativeAudioTest/`，安装 ID 为 `JamieWinNativeAudioTest`。离线与设备检查不代表新增钩子的实机覆盖已经通过。
+当前源码为 **1.2.0 事件驱动版**（运行时 `1.2.0-stable`），音频在游戏进程内播放。源码集中在 `probes/JamieWinNativeAudioTest/`，安装 ID 为 `JamieWinNativeAudioTest`。离线与设备检查不代表新增钩子的实机覆盖已经通过。
 
 ## 源码结构
 
@@ -94,7 +94,7 @@ Lua 检查覆盖状态转换、持剑检测、音量接管与恢复、处决时�
 & ./tools/package-native-audio-test.ps1
 ```
 
-脚本校验 `mod.json`、Lua 和 DLL 的版本一致性，重新构建并生成 `.local/releases/时间戳/JamieWin-版本.zip` 与 SHA256 文件。包内包含 10 个 Lua 脚本、4 份音频、1 个 DLL、元数据、启用标记、空运行目录占位文件和安装说明，共 19 个文件。事件版元数据的 channel 为 `event-test`。
+脚本校验 `mod.json`、Lua 和 DLL 的版本一致性，重新构建并生成 `.local/releases/时间戳/JamieWin-版本.zip` 与 SHA256 文件。包内包含 10 个 Lua 脚本、4 份音频、1 个 DLL、元数据、启用标记、空运行目录占位文件和安装说明，共 19 个文件。事件版元数据的 channel 为 `stable`。
 
 安装使用 UEMM，文件部署到 `platform/steam/ue4ss/Mods/JamieWinNativeAudioTest/`。构建、测试和打包工具只写项目的 `.local/`，不安装或修改游戏目录。
 

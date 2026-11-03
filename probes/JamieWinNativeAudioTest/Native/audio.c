@@ -10,7 +10,7 @@
 #include <math.h>
 #include "mixer.h"
 #include "media_decode.h"
-#define VERSION "0.0.20261103-event-test"
+#define VERSION "1.2.0-stable"
 #define PATH_CAP 32768
 #define MAX_PCM (64u*1024u*1024u)
 #define BUFFER_COUNT 4

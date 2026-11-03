@@ -1,4 +1,4 @@
 return {
-    Version = "0.0.20261103-event-test",
+    Version = "1.2.0-stable",
     StatusTimeoutSeconds = 10,
 }
