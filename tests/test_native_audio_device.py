@@ -249,8 +249,9 @@ class NativeDeviceTests(unittest.TestCase):
 
         def tick_until(predicate, timeout=5):
             deadline = time.monotonic() + timeout
+            adapter.update(adapter, state, time.monotonic())  # one gameplay/slider event
             while time.monotonic() < deadline:
-                adapter.update(adapter, state, time.monotonic())
+                adapter.service(adapter, time.monotonic())
                 if predicate():
                     return
                 time.sleep(.05)
@@ -276,7 +277,7 @@ class NativeDeviceTests(unittest.TestCase):
             tick_until(lambda: adapter.phase == 'playing' and adapter.track == 'drunk' and r.status().get('drink_playing') == '1')
             sequence = adapter.sequence
             for _ in range(8):
-                adapter.update(adapter, state, time.monotonic())
+                adapter.service(adapter, time.monotonic())
                 time.sleep(.05)
             self.assertEqual(adapter.sequence, sequence)
             gate.gains.music = .1

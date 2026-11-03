@@ -66,21 +66,26 @@ function GameAudio:installHook()
     end)
     self.hooked=true
 end
-function GameAudio:preference()
+function GameAudio:preference(cached)
+    if cached then return self.capturedPreference or self.saved end
     if self.valid(self.settings) then
         local current=self.settings.MusicVolume
         if type(current)=="number" and current>=0 and current<=1 then return current end
     end
     return self.saved
 end
-function GameAudio:update(want, safe, controller, now)
+function GameAudio:update(want, safe, controller, now, cached)
     self.ticks=self.ticks+1
-    self:resolve(controller)
+    if not cached then
+        self:resolve(controller)
+        self.capturedPreference=self:preference()
+    end
     if not want and not self.owned then return false end
+    if want and self.owned and self.phase=="muted" then return true end
     if not self:subsystem() then return false end
     if want and self.phase~="restoring" then
         if not self.owned then
-            local preference=self:preference()
+            local preference=self:preference(cached)
             if preference==nil or self:read()==nil then return false end
             self:installHook()
             self.saved,self.owned,self.phase,self.started=preference,true,"muting",now
@@ -93,7 +98,7 @@ function GameAudio:update(want, safe, controller, now)
             elseif now-self.started>=3 then error("game music mute confirmation timeout") end
         end
     elseif self.owned and (safe or self.phase=="restoring") then
-        local preference=self:preference()
+        local preference=self:preference(cached)
         if preference==nil then return false end
         if self.phase~="restoring" or self.target~=preference then
             self.phase,self.target,self.lastRestore="restoring",preference,now

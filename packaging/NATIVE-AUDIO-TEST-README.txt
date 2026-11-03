@@ -1,8 +1,10 @@
-JamieWin 1.1.0 · 影之刃零醉剑音频 Mod
+JamieWin 0.0.20261103 事件驱动测试版 · 影之刃零醉剑音频 Mod
 
 通过 UEMM（UE MM）安装，装好后正常进游戏就能用。
 四酒和 Jamie wins 音效直接叠加，背景音乐保持音量和进度。
 两首音乐使用原始 M4A / MP3，小体积打包。
+游戏状态改为钩子触发读取，取消定时游戏状态轮询；音频心跳和播放确认独立维护。
+实际回调覆盖及卡顿改善待游戏内复测。
 
 安装
 UEMM 下载地址：https://github.com/KintaroModding/uemodmanager/releases
@@ -10,7 +12,7 @@ UEMM 下载地址：https://github.com/KintaroModding/uemodmanager/releases
 1. 先退出游戏。
 2. 下载 UEMM，解压后运行 UEModManager.exe；没自动找到游戏，就在设置里选游戏目录。
 3. 在 UEMM 的 UE4SS 页面安装适配游戏的 UE4SS，已有兼容版本就跳过。
-4. 把 JamieWin-1.1.0.zip 拖进 UEMM，确认名称 JamieWin、版本 1.1.0，安装并启用。
+4. 把 JamieWin-0.0.20261103.zip 拖进 UEMM，确认名称 JamieWin、版本 0.0.20261103，安装并启用。
 5. 从 Steam 正常启动游戏。
 
 ZIP 直接导入，不用手动解压。
@@ -42,6 +44,10 @@ UEMM 使用说明：https://github.com/KintaroModding/uemodmanager/blob/main/ope
 同时只启用一个 JamieWin 版本。
 
 遇到问题
+间歇性卡顿可在同一场景对比按 F10 前后各 30 秒的流畅度。
+更新后检查日志中的 BOOT 0.0.20261103-event-test 和 EVENT_MODE，确认实际加载了事件版。
+复测拔收剑、切武器、微醺/大醉/自然醒酒、菜单、音量、死亡/复活、读档和处决。
+出现漏切歌、菜单效果不退出或 EVENT_ERROR / FAIL 时，请附操作步骤和日志。
 反馈时说一下做了什么、听到了什么，并附上这些日志：
 - Mod 文件夹下 runtime/ 里的 native-audio-test.log、native-output.log 和 native-status.txt。
 - platform/steam/ue4ss/UE4SS.log。

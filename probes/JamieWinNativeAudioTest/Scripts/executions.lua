@@ -5,7 +5,7 @@ function Executions.new(observer,settings,valid,log,changed)
     local allowed={}
     for _,name in ipairs(settings.ExecutionClasses)do allowed[name]=true end
     return setmetatable({observer=observer,settings=settings,valid=valid,log=log,changed=changed,
-        allowed=allowed,hooks={},classes={},pending={},waiting={},serial=0,enabled=true},Executions)
+        allowed=allowed,hooks={},classes={},installed={},pending={},waiting={},serial=0,enabled=true},Executions)
 end
 function Executions:key(object)return self.valid(object) and tostring(object:GetAddress()) or "" end
 function Executions:health(actor)
@@ -76,6 +76,7 @@ function Executions:deliver(id)
     end
 end
 function Executions:finish(ability)
+    if not self.enabled or next(self.pending)==nil then return end
     if self.valid(ability) then self.pending[self:key(ability)]=nil end
 end
 function Executions:protect(fn)
@@ -84,6 +85,9 @@ function Executions:protect(fn)
         if not ok then self.log("EXECUTION_HOOK_ERROR "..tostring(err)) end
     end
 end
+function Executions:cancel()
+    self.pending,self.waiting={},{}
+end
 function Executions:update(player,now,active)
     for key,entry in pairs(self.pending)do
         if entry.player~=player or now-entry.time>30 then self.pending[key]=nil end
@@ -91,27 +95,38 @@ function Executions:update(player,now,active)
     for id,entry in pairs(self.waiting)do
         if not self.enabled or active==false or entry.player~=player or now-entry.time>30 then self.waiting[id]=nil end
     end
-    if not self.enabled or self.lastInstall==now then return end
-    self.lastInstall=now
+    if not self.enabled or active==false then return end
     for _,name in ipairs(self.settings.ExecutionClasses)do
-        if not self.valid(self.classes[name]) then self.classes[name]=FindObject(nil,name) end
+        if not self.valid(self.classes[name]) then
+            self.classes[name]=FindObject(nil,name)
+            self.installed[name]=nil
+        end
         local current=self.classes[name]
-        while self.valid(current)do
-            current:ForEachFunction(function(fn)
-                local short=fn:GetFName():ToString()
-                if short~="Play Execution" and short~="K2_OnEndAbility" then return end
-                local path=fn:GetFullName():gsub("^%S+%s+","")
-                if self.hooks[path] then return end
-                local callback=self:protect(function(ctx)
-                    if short=="Play Execution" then self:begin(ctx:get()) else self:finish(ctx:get()) end
+        if not self.installed[name] and self.valid(current) then
+            local complete,sawStart=true,false
+            while self.valid(current)do
+                current:ForEachFunction(function(fn)
+                    local short=fn:GetFName():ToString()
+                    if short~="Play Execution" and short~="K2_OnEndAbility" then return end
+                    if short=="Play Execution" then sawStart=true end
+                    local path=fn:GetFullName():gsub("^%S+%s+","")
+                    if self.valid(self.hooks[path]) then return end
+                    local callback=self:protect(function(ctx)
+                        if not self.enabled then return end
+                        if short=="Play Execution" then self:begin(ctx:get()) else self:finish(ctx:get()) end
+                    end)
+                    local ok=pcall(function()
+                        if path:sub(1,8)=="/Script/" then RegisterHook(path,function()end,callback)
+                        else RegisterHook(path,callback) end
+                    end)
+                    if ok then self.hooks[path]=fn;self.log("EXECUTION_HOOK "..path)
+                    else complete=false end
                 end)
-                local ok=pcall(function()
-                    if path:sub(1,8)=="/Script/" then RegisterHook(path,function()end,callback)
-                    else RegisterHook(path,callback) end
-                end)
-                if ok then self.hooks[path]=true;self.log("EXECUTION_HOOK "..path) end
-            end)
-            current=current:GetSuperStruct()
+                current=current:GetSuperStruct()
+            end
+            -- Retain retries while classes/bytecode load, then stop walking the
+            -- same function hierarchies every second. Invalid classes rediscover.
+            self.installed[name]=complete and sawStart
         end
     end
 end

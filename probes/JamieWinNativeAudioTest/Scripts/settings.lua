@@ -1,5 +1,5 @@
 return {
-    PollMs = 200,
+    AudioServiceMs = 200, -- native heartbeat/ack only; never samples gameplay
     ExecutionVoiceDelayMs = 2000,
     -- Reflected classes observed in this user's Steam build 26266538 header dump.
     -- Runtime transition checks are still required for final game acceptance.

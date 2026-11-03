@@ -70,8 +70,13 @@ function Audio:safeToRestore(status,now)
     end
     return false
 end
-function Audio:tick(state,now)
-    local active=state.active==true and self.valid(state.owner)
+function Audio:tick(state,now,cached)
+    if not cached then
+        self.snapshotActive=state.active==true and self.valid(state.owner)
+        self.state={}
+        for key,value in pairs(state)do self.state[key]=value end
+    end
+    local active=self.snapshotActive
     local inMenu=active and (state.inMenu==true or state.paused==true)
     local track=active and state.track or "none"
     assert(tracks[track],"invalid gameplay track")
@@ -104,23 +109,26 @@ function Audio:tick(state,now)
         end
     end
     if self.blocked==context then
-        self.gate:update(false,self:safeToRestore(status,now),state.controller,now)
+        self.gate:update(false,self:safeToRestore(status,now),state.controller,now,cached)
         return
     end
     -- Wait for a first gameplay observation; once started, menus never pause the music.
     if not self.api and (not active or inMenu or (track=="none" and self.drink==0 and self.win==0)) then
-        self.gate:update(false,true,state.controller,now);self.phase="idle";return
+        self.gate:update(false,true,state.controller,now,cached);self.phase="idle";return
     end
     if not self.api then self:load(now) end
     if active then
-        self.gains=assert(self.gate:volumes(state.controller),"game volume preferences unavailable")
+        if not cached then
+            local gains=assert(self.gate:volumes(state.controller),"game volume preferences unavailable")
+            self.gains={music=gains.music,drink=gains.drink,win=gains.win}
+        end
         self.api.Heartbeat()
     end
     -- All four assets share one prepared device. Keep that fact across brief file contention,
     -- gain updates and song changes; withdrawing permission would restart the music.
     local ready=self.readyEpoch==self.epoch
     local want=active and track~="none" and (ready or self.gate.owned)
-    local allow=self.gate:update(want,self:safeToRestore(status,now),state.controller,now) and ready
+    local allow=self.gate:update(want,self:safeToRestore(status,now),state.controller,now,cached) and ready
     self:send(active,track,inMenu,allow,now)
     if self.inMenu~=inMenu then
         self.inMenu=inMenu
@@ -141,6 +149,14 @@ function Audio:tick(state,now)
 end
 function Audio:update(state,now)
     local ok,err=pcall(function()self:tick(state,now)end)
+    if not ok then self:fail("Lua/native error: "..tostring(err),now) end
+end
+function Audio:needsService()return self.api~=nil or self.gate.owned end
+function Audio:service(now)
+    -- Transport heartbeat/status/ack only. Gameplay and slider values are the
+    -- last event snapshot; steady playback must not call Unreal getters.
+    if not self.state or not self:needsService() then return end
+    local ok,err=pcall(function()self:tick(self.state,now,true)end)
     if not ok then self:fail("Lua/native error: "..tostring(err),now) end
 end
 function Audio:isStopped(now)

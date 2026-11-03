@@ -2,7 +2,7 @@
   "format": 1,
   "id": "JamieWinNativeAudioTest",
   "name": "JamieWin",
-  "version": "1.1.0",
-  "channel": "stable",
+  "version": "0.0.20261103",
+  "channel": "event-test",
   "description": "醉剑音乐、四酒日语与处决语音；进入菜单音乐连续播放并变闷，退出恢复清晰。"
 }

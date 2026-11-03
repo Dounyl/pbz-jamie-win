@@ -72,6 +72,7 @@ jobs:
           foreach ($test in @(
             'test_native_audio_probe.py',
             'test_native_menu_detection.py',
+            'test_game_events.py',
             'test_lua.py',
             'test_native_mixer.py',
             'test_native_audio_decode.py',
@@ -100,7 +101,7 @@ jobs:
           base = 'platform/steam/ue4ss/Mods/JamieWinNativeAudioTest/'
           with zipfile.ZipFile(archive) as package:
               assert package.testzip() is None
-              assert len(package.namelist()) == len(files) == 18
+              assert len(package.namelist()) == len(files) == 19
               assert set(package.namelist()) == set(files)
               for name, path in files.items():
                   assert package.read(name) == path.read_bytes(), name

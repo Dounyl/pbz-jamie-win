@@ -12,7 +12,7 @@ PROBE = ROOT / 'probes/JamieWinNativeAudioTest/Scripts'
 def runtime():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute('modules={}')
-    for name in ('probe_settings', 'native_audio', 'game_audio', 'executions', 'gameplay', 'core', 'weapon', 'settings'):
+    for name in ('probe_settings', 'native_audio', 'game_audio', 'executions', 'gameplay', 'game_events', 'core', 'weapon', 'settings'):
         path = PROBE / (name + '.lua')
         lua.execute('local n,s=...;modules[n]=assert(load(s))()', name, path.read_text(encoding='utf-8'))
     return lua
@@ -190,19 +190,88 @@ class NativeAudioProbeTests(unittest.TestCase):
                 self.setUp()
                 self.check(fault+";enter();steps(10);assert(applies==0 and not gate.owned and audio.phase=='failed')")
 
-    def test_main_f10_waits_for_restore_and_disables_execution_events(self):
+    def start_main(self):
         self.lua.execute('''
+            samples=0;frames={}
             dofile=function(path)return modules[assert(path:match('/([^/]+)%.lua$'))]end
             modules.gameplay={new=function()return {controller=state.controller,sample=function()
+                samples=samples+1
                 if observationError then error('observation failed')end;return state
             end}end}
             modules.game_audio={new=function()return gate end}
-            modules.executions={new=function()execution={enabled=true,update=function()end};return execution end}
+            cancellations=0
+            modules.executions={new=function()execution={enabled=true,update=function()end,
+                cancel=function()cancellations=cancellations+1 end};return execution end}
+            modules.game_events={new=function(_,_,_,_,changed)
+                eventChanged=changed
+                events={refresh=function()end,watchCurrent=function()end,playerEnded=function()return false end,
+                    stop=function(self)self.stopped=true end}
+                return events
+            end}
             print=log;Key={F10=121};RegisterKeyBindAsync=function(_,fn)stopKey=fn end
-            ExecuteInGameThread=function(fn)fn()end;LoopAsync=function(_,fn)timer=fn end
+            ExecuteInGameThread=function(fn)frames[#frames+1]=fn end
+            LoopAsync=function(_,fn)timer=fn end
+            function frame()
+                local pending=frames;frames={}
+                for _,fn in ipairs(pending)do fn()end
+            end
+            function service(count)
+                for i=1,count do timer();frame()end
+            end
         ''')
         self.lua.execute('assert(load(...,"@C:/Probe/Scripts/main.lua"))()', (PROBE / 'main.lua').read_text())
-        self.check("gameplay(true,'sober',true);for i=1,5 do timer()end;assert(starts==1);observationError=true;for i=1,4 do timer()end;assert(not gate.owned);observationError=false;for i=1,5 do timer()end;assert(starts==2);stopKey();assert(timer()==false and execution.enabled==false);for i=1,4 do timer()end;assert(timer()==true and not gate.owned);assert(logs():find('STOPPED F10',1,true))")
+
+    def test_main_f10_waits_for_restore_and_disables_execution_events(self):
+        self.start_main()
+        self.check("gameplay(true,'sober',true);frame();service(5);assert(starts==1);stopKey();frame();assert(execution.enabled==false and events.stopped);service(4);assert(timer()==true and not gate.owned);assert(logs():find('STOPPED F10',1,true))")
+
+    def test_main_transport_never_samples_gameplay_without_events(self):
+        self.start_main()
+        self.check('''
+            gameplay(true,'sober',true);frame();service(5);assert(starts==1 and samples==1)
+            service(3000);assert(samples==1,'ten minutes of audio service cannot sample gameplay')
+            gameplay(true,'tipsy',true)
+            service(5);assert(samples==1)
+            for i=1,20 do eventChanged()end
+            assert(#frames==1);frame();service(5);assert(samples==2)
+        ''')
+
+    def test_events_arriving_during_snapshot_are_not_lost(self):
+        self.start_main()
+        self.check('''
+            local first=true
+            events.watchCurrent=function()
+                if first then first=false;eventChanged()end
+            end
+            frame();assert(samples==1 and #frames==1)
+            frame();assert(samples==2 and #frames==0)
+        ''')
+
+    def test_snapshot_error_stops_audio_until_another_event_recovers(self):
+        self.start_main()
+        self.check('''
+            gameplay(true,'sober',true);frame();service(5);assert(starts==1)
+            observationError=true;eventChanged();frame();service(4);assert(not gate.owned)
+            observationError=false;eventChanged();frame();service(5);assert(starts==2)
+        ''')
+
+    def test_coalesced_death_and_respawn_still_cancel_pending_execution(self):
+        self.start_main()
+        self.check('''
+            gameplay(true,'sober',true);frame();service(5)
+            events.forceInactive=true;eventChanged();eventChanged();frame();service(5)
+            assert(cancellations==1 and samples==2 and gate.owned)
+        ''')
+
+    def test_audio_service_uses_immutable_gameplay_and_volume_snapshots(self):
+        self.check('''
+            enter();steps(5)
+            local previous=applies
+            gameplay(true,'tipsy',true);gate.gains.music=.1
+            gate.volumes=function()error('audio service must not query sliders')end
+            for i=1,100 do audio:service(now)end
+            assert(audio.track=='armed' and audio.gains.music==.45 and applies==previous)
+        ''')
 
 
 class GameVolumeTests(unittest.TestCase):
@@ -256,6 +325,16 @@ class GameVolumeTests(unittest.TestCase):
     def test_restore_changes_target_when_user_moves_slider_during_restore(self):
         self.check("gate:update(true,false,controller,1);gate:update(true,false,controller,2);gate:update(false,true,controller,3);preference.MusicVolume=.2;gate:update(false,true,controller,4);assert(gate.owned and rtpcValue==.2);gate:update(false,true,controller,5);assert(not gate.owned)")
 
+    def test_steady_transport_never_resolves_game_objects_or_reads_preferences(self):
+        self.check('''
+            gate:update(true,false,controller,1);assert(gate:update(true,false,controller,2))
+            gate.resolve=function()error('transport must not resolve gameplay')end
+            gate.subsystem=function()error('stable transport must not query world subsystem')end
+            gate.preference=function()error('stable transport must not read sliders')end
+            for step=1,3000 do assert(gate:update(true,false,controller,step,true))end
+            assert(#writes==1)
+        ''')
+
 
 class ExecutionTests(unittest.TestCase):
     def setUp(self):
@@ -294,12 +373,12 @@ class ExecutionTests(unittest.TestCase):
                 end
             end
             function reflected(short,path)
-                return {GetFName=function()return {ToString=function()return short end}end,
+                return {valid=true,GetFName=function()return {ToString=function()return short end}end,
                     GetFullName=function()return 'Function '..path..':'..short end}
             end
             local blueprint='/SGameExecution/GA/GA_ExecutionAbilityBase.GA_ExecutionAbilityBase_C'
             local native='/Script/GameplayAbilities.GameplayAbility'
-            local functions={}
+            functions={};walks=0;finds=0
             for _,short in ipairs({'Play Execution','K2_ActivateAbility','K2_OnEndAbility',
                     'CanPerformExecution','SetCurrentExecutionInfo','Get Execution Start Time',
                     'ReceiveExecutionFinish','Play Heavy Attack Timeline'})do
@@ -307,9 +386,9 @@ class ExecutionTests(unittest.TestCase):
             end
             functions[#functions+1]=reflected('K2_ActivateAbility',native)
             functions[#functions+1]=reflected('K2_OnEndAbility',native)
-            class={valid=true,ForEachFunction=function(_,fn)for _,v in ipairs(functions)do fn(v)end end,
+            class={valid=true,ForEachFunction=function(_,fn)walks=walks+1;for _,v in ipairs(functions)do fn(v)end end,
                 GetSuperStruct=function()return nil end}
-            FindObject=function()return class end
+            FindObject=function()finds=finds+1;return class end
             registered={};registrations=0
             RegisterHook=function(path,pre,post)
                 if registrationError then error('class bytecode not ready')end
@@ -397,6 +476,45 @@ class ExecutionTests(unittest.TestCase):
             ability.IsPlayingTimeline=function()error('timeline unavailable')end
             fire('Play Execution');assert(changed==0 and observer.core.wins==0)
             assert(logs[#logs]:find('EXECUTION_HOOK_ERROR',1,true))
+        ''')
+
+    def test_installed_hooks_do_not_walk_function_hierarchies_again(self):
+        self.check('''
+            executions:update('player',1,true)
+            local initialWalks,initialFinds=walks,finds
+            assert(registrations==3)
+            for second=2,601 do executions:update('player',second,true)end
+            assert(walks==initialWalks and finds==initialFinds and registrations==3)
+            fire('Play Execution');advance(2000);assert(changed==1)
+        ''')
+
+    def test_unloaded_classes_and_functions_are_rediscovered(self):
+        self.check('''
+            executions:update('player',1,true);assert(registrations==3)
+            class.valid=false
+            for index,fn in ipairs(functions)do
+                fn.valid=false
+                functions[index]={valid=true,GetFName=fn.GetFName,GetFullName=fn.GetFullName}
+            end
+            class={valid=true,ForEachFunction=class.ForEachFunction,GetSuperStruct=class.GetSuperStruct}
+            executions:update('player',2,true);assert(registrations==6 and finds==4)
+            fire('Play Execution');advance(2000);assert(changed==1)
+        ''')
+
+    def test_no_hook_discovery_while_gameplay_is_inactive(self):
+        self.check('''
+            for second=1,60 do executions:update('',second,false)end
+            assert(finds==0 and walks==0 and registrations==0)
+            executions:update('player',61,true);assert(registrations==3)
+        ''')
+
+    def test_incomplete_class_retries_until_start_function_is_available(self):
+        self.check('''
+            local loaded=functions;functions={}
+            executions:update('player',1,true);assert(registrations==0)
+            functions=loaded;executions:update('player',2,true);assert(registrations==3)
+            local installedWalks=walks
+            executions:update('player',3,true);assert(walks==installedWalks)
         ''')
 
     def test_short_execution_and_target_death_do_not_cancel_confirmed_start_cue(self):

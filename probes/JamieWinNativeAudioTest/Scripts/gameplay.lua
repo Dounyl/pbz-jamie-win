@@ -1,8 +1,10 @@
 -- Read-only adapter for the same Core, Weapon and settings shipped by JamieWin.
 local Gameplay = {}
 Gameplay.__index = Gameplay
+local menuClasses = {"PBZSystemScreenWidget", "PBZGameSystemWidget"}
 function Gameplay.new(Core, Weapon, settings, valid)
-    return setmetatable({ core=Core.new(), weapon=Weapon, settings=settings, valid=valid }, Gameplay)
+    return setmetatable({ core=Core.new(), weapon=Weapon, settings=settings, valid=valid,
+        menuWidgets={},menuDirty=true }, Gameplay)
 end
 function Gameplay:className(object)
     return self.valid(object) and object:GetClass():GetFName():ToString() or ""
@@ -12,23 +14,50 @@ function Gameplay:inactive(detail, player)
     return { active=false, controller=self.controller, track="none", state="unknown", player=player or "",
         heavy=self.core.heavy,wins=self.core.wins,paused=false,inMenu=false,detail=detail }
 end
+function Gameplay:isA(object,name)
+    local current=self.valid(object) and object:GetClass() or nil
+    while self.valid(current)do
+        if current:GetFName():ToString()==name then return true end
+        current=current:GetSuperStruct()
+    end
+    return false
+end
+function Gameplay:isMenu(object)
+    for _,name in ipairs(menuClasses)do
+        if self:isA(object,name) then return true end
+    end
+    return false
+end
+function Gameplay:rememberMenu(widget)
+    if not self.valid(widget) or not self:isMenu(widget) then return end
+    local key=widget:GetAddress()
+    for _,entry in ipairs(self.menuWidgets)do
+        if self.valid(entry.object) and entry.object:GetAddress()==key then return end
+    end
+    self.menuWidgets[#self.menuWidgets+1]={object=widget,class=self:className(widget)}
+end
+function Gameplay:resetWorld()
+    self.controller,self.menuController,self.owner=nil,nil,nil
+    self.menuWidgets,self.menuDirty={},true
+end
 function Gameplay:menuOpen(paused)
-    -- IsGamePaused is already observed in PBZ. Also recognize active system menus
-    -- that do not pause the world. Query roots, never individual hidden tab panels.
+    -- Called only for game events. Creation/activation hooks add new menu roots;
+    -- one discovery pass covers widgets that already existed when the mod started.
     if paused then return true,"game paused" end
-    local now=os.time()
-    if self.menuScanAt~=now or self.menuController~=self.controller then
-        self.menuScanAt,self.menuController,self.menuWidgets=now,self.controller,{}
-        for _,class in ipairs({"PBZSystemScreenWidget","PBZGameSystemWidget"})do
+    if self.menuDirty or self.menuController~=self.controller then
+        self.menuController,self.menuWidgets=self.controller,{}
+        self.menuDirty=false
+        for _,class in ipairs(menuClasses)do
             local ok,widgets=pcall(FindAllOf,class)
             if ok then
                 for _,widget in ipairs(widgets or {})do
                     self.menuWidgets[#self.menuWidgets+1]={object=widget,class=class}
                 end
-            end
+            else self.menuDirty=true end
         end
     end
-    for _,entry in ipairs(self.menuWidgets or {})do
+    for index=#self.menuWidgets,1,-1 do
+        local entry=self.menuWidgets[index]
         local widget=entry.object
         if self.valid(widget) then
             local ok,open=pcall(function()
@@ -37,17 +66,16 @@ function Gameplay:menuOpen(paused)
                     and widget:IsActivated()==true and widget:IsVisible()==true
             end)
             if ok and open then return true,entry.class end
-        end
+        else table.remove(self.menuWidgets,index) end
     end
     return false,"none"
 end
 function Gameplay:sample()
     local valid = self.valid
-    if not valid(self.controller) or not valid(self.controller.Player)
-        or not valid(self.controller.Pawn) then
+    if not valid(self.controller) or not valid(self.controller.Player) then
         self.controller = nil
         for _, item in ipairs(FindAllOf("PlayerController") or {}) do
-            if valid(item) and valid(item.Player) and valid(item.Pawn)
+            if valid(item) and valid(item.Player)
                 and not self:className(item):find("DebugCamera", 1, true) then
                 self.controller = item
                 break
@@ -56,6 +84,8 @@ function Gameplay:sample()
     end
     if not valid(self.controller) then return self:inactive("no local player") end
     local pawn = self.controller.Pawn
+    if not valid(pawn) then return self:inactive("no player pawn") end
+    self.owner=pawn
     local player = tostring(pawn:GetAddress())
     if not valid(self.titleLibrary) then
         self.titleLibrary = StaticFindObject("/Script/ProjectPBZ.Default__PBZBlueprintFunctionLibrary")
